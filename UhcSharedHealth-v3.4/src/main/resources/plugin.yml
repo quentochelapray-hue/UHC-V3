@@ -1,0 +1,33 @@
+name: UhcSharedHealth
+version: 3.4
+main: fr.uhc.UhcPlugin
+api-version: '1.21'
+description: Ultra hardcore en equipe - vie partagee, notes persistantes, objectifs, fayot et cancre, nouvelle map a chaque mort
+commands:
+  uhcreset:
+    description: Force une nouvelle map (arrete le serveur)
+    usage: /uhcreset
+    permission: uhc.reset
+  uhcstats:
+    description: Stats de la run en cours
+    usage: /uhcstats
+  uhcruns:
+    description: Classement des meilleures runs (objectifs puis temps)
+    usage: /uhcruns
+  uhcglobal:
+    description: Stats globales depuis le debut
+    usage: /uhcglobal
+  uhcnotes:
+    description: Affiche les notes (ou les remet a 20 avec reset)
+    usage: /uhcnotes [reset [pseudo]]
+  uhctest:
+    description: Teste la roulette du fayot et du cancre sur toi
+    usage: /uhctest fayot|cancre|deux|prof|stop
+    permission: uhc.reset
+  uhcpack:
+    description: Recree le pack de textures des tetes (skins des joueurs connectes) et l'envoie a tout le monde
+    usage: /uhcpack
+    permission: uhc.reset
+permissions:
+  uhc.reset:
+    default: op

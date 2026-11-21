@@ -1,0 +1,136 @@
+# ===== UHC : reglages =====
+# Apres modification : redemarre le serveur (via start.bat).
+
+# Note maximale. Les notes restent TOUJOURS entre 0 et cette valeur,
+# et elles sont conservees d'une run a l'autre (remise a zero : /uhcnotes reset).
+max-score: 20
+
+# ----- BONS POINTS -----
+bonus:
+  advancement: 0.2               # chaque progres Minecraft
+  advancement-first: 0.5         # a la place, si on est le PREMIER de l'equipe a le faire
+  regen: 1.0                     # reussir a regenerer des coeurs (pomme d'or, potion...)
+  regen-cooldown-seconds: 30     # delai minimum entre deux bonus de regeneration
+  chest-first: 0.5               # le PREMIER joueur de la run a ouvrir un coffre
+  advancement-second: 0.3        # le DEUXIEME joueur a faire un progres (les suivants : "advancement")
+  cap-later: 0.3                 # gros cap deja passe par un coequipier : les suivants ne gagnent que ca
+  collective: 0.5                # defi collectif qui n'est pas un gros cap (ex : dormir dans un lit)
+
+# Defis COLLECTIFS : des qu'UN joueur les reussit, TOUT LE MONDE gagne les points (une seule fois).
+# (pour un gros cap, ce sont les points du cap ; sinon bonus.collective). Les autres defis sont
+# individuels : le premier gagne le plus, les suivants beaucoup moins.
+collective-advancements:
+  - adventure/sleep_in_bed       # dormir dans un lit
+  - story/enter_the_nether       # entrer dans le Nether
+  - nether/find_fortress         # trouver une forteresse
+  - story/follow_ender_eye       # trouver le stronghold
+  - story/enter_the_end          # entrer dans l'End
+  - end/kill_dragon              # tuer l'Ender Dragon
+
+# Gros caps, dans l'ordre (affiches comme "prochain objectif" en haut de l'ecran)
+caps:
+  stone: 1.0         # obtenir de la pierre
+  iron: 1.0          # fondre du fer
+  iron_tools: 1.0    # pioche en fer
+  diamond: 2.0       # trouver des diamants
+  nether: 2.0        # entrer dans le Nether
+  fortress: 2.0      # trouver une forteresse
+  blaze_rod: 2.0     # obtenir une blaze rod
+  stronghold: 3.0    # trouver le stronghold
+  end: 3.0           # entrer dans l'End
+  dragon: 5.0        # tuer l'Ender Dragon
+
+# ----- MAUVAIS POINTS (sanction PROGRESSIVE) -----
+# Les degats de meme cause rapproches forment un "incident" : plus l'incident dure,
+# plus le total de coeurs perdus est sanctionne. Points retires = rate x (coeurs perdus) ^ exponent.
+# Exemples avec les valeurs par defaut (erreur bete) : 0,5 coeur = -0,4 ; 1 = -1 ; 3 = -4,7 ; 5 = -9,5
+# Une valeur d'exposant plus grande rend la sanction plus brutale quand l'incident s'aggrave.
+penalties:
+  incident-window-seconds: 2.5   # les points sont calcules et annonces APRES X secondes sans nouveau degat de cette cause
+  rate:
+    stupid: 1.0       # erreur bete
+    normal: 0.6       # erreur normale
+    unlucky: 0.25     # pas de chance (monstres, projectiles, foudre...)
+  exponent:
+    stupid: 1.4
+    normal: 1.3
+    unlucky: 1.0
+  friendly-fire-points: 3.0    # retire a celui qui frappe un coequipier (0 pour celui qui recoit)
+  cooldown-seconds: 3          # delai entre deux coups portes a un coequipier
+  stupid: [LAVA, DROWNING, CONTACT, STARVATION, SUFFOCATION, HOT_FLOOR, VOID]
+  normal: [FALL, FIRE, FLY_INTO_WALL, FREEZE, BLOCK_EXPLOSION, ENTITY_EXPLOSION, FALLING_BLOCK]
+  # toute autre cause = "pas de chance"
+
+# ----- FAYOT (meilleure note de la run precedente) -----
+# Format : "OBJET:quantite" (noms Minecraft en anglais, en majuscules)
+fayot:
+  kit:
+    - "WOODEN_PICKAXE:1"
+    - "WOODEN_AXE:1"
+    - "WOODEN_SHOVEL:1"
+    - "WOODEN_SWORD:1"
+    - "BREAD:8"
+
+# ----- CANCRE (moins bonne note de la run precedente) -----
+# Pendant duration-seconds, un effet derangeant au hasard toutes les interval-seconds.
+# Chaque effet dure 10 secondes. Format : "effet:secondes:niveau" (niveau 0 = I, 1 = II)
+cancre:
+  duration-seconds: 600       # le malus dure 10 minutes
+  interval-seconds: 30        # un effet au hasard toutes les 30 secondes (chacun dure presque jusqu'au suivant)
+  effects:
+    - "nausea:25:0"
+    - "slowness:25:1"
+    - "mining_fatigue:30:1"
+    - "blindness:12:0"
+    - "weakness:30:0"
+    - "darkness:25:0"
+
+# ----- TETES DES JOUEURS (pack de textures genere automatiquement) -----
+# Une petite tete (visage du skin) s'affiche devant chaque pseudo : chat, Tab, barres, ecran de fin.
+# Le pack est cree a partir des skins des joueurs CONNECTES (commande /uhcpack, ou tout seul quand
+# un nouveau joueur se connecte), puis envoye aux joueurs a la connexion.
+heads:
+  enabled: true
+  # Port du mini serveur integre qui distribue le pack (a OUVRIR / rediriger sur ta box, en TCP,
+  # comme le port 25565). 0 = desactive (dans ce cas, renseigne "url" ci-dessous).
+  http-port: 8765
+  # URL publique du pack si tu l'heberges ailleurs (laisse vide pour utiliser le serveur integre).
+  url: ""
+  # true : le pack est obligatoire (refus ou echec de telechargement = deconnecte).
+  required: false
+
+# ----- MESSAGES -----
+messages:
+  # true : les points gagnes / perdus sont annonces a TOUT LE MONDE (avec une blague quand c'est une perte)
+  broadcast-points: true
+  # Une blague d'ambiance (selon l'avancee de l'equipe) toutes les ~N secondes. 0 = desactive.
+  joke-interval-seconds: 300
+
+# ----- CONTENU DU PACK DE TEXTURES (en plus des tetes) -----
+# Les sons / flash ne sont joues qu'aux joueurs qui ont charge le pack (les autres gardent les sons Minecraft).
+pack:
+  sounds: true         # jingle de cap, son de fin de run, "aie" des coequipiers, premier coffre
+  damage-flash: false  # SUPPRIME : plus d'ecran rouge quand on prend des degats
+  ui: true             # interface a icones (objectifs, chrono, crane) + bulle du professeur avec portrait
+  icon-advances: [17, 17, 17, 17, 17, 17, 17, 17, 17, 17]  # ecart apres chaque icone ; +/-1 si une icone est decalee
+  bar-colors: true     # nouvelles couleurs pour la barre du haut (jaune) et le radar (bleu)
+
+# ----- LE PROFESSEUR (personnage qui commente la run) -----
+# Ses repliques s'affichent dans une bulle (barre violette en haut de l'ecran) au lieu du chat :
+# degats et fautes, objectifs reussis, fin de run, fayot et cancre, et des remarques d'ambiance.
+# Tous les textes sont dans Jokes.java.
+teacher:
+  enabled: true
+  name: "ScameBeast"          # nom affiche devant ses repliques
+  max-chars: 66                # une bulle est coupee apres ~60 caracteres (sinon le texte depasse de l'ecran)
+  ambient: true                # remarques d'ambiance a des moments ALEATOIRES
+  ambient-min-seconds: 150     # delai le plus court entre deux remarques
+  ambient-max-seconds: 480     # delai le plus long
+
+# ----- MEILLEURE RUN (score calcule avec les objectifs ET le temps) -----
+# Chaque objectif fait par l'equipe rapporte ses points (section "caps") x 10 x un coefficient de rapidite :
+# 1,5 s'il est fait tout de suite, 1,0 pile au temps "par" ci-dessous, 0,5 (minimum) 2 fois plus tard.
+# Temps "par" en MINUTES, dans l'ordre : pierre, fer, pioche en fer, diamants, Nether, forteresse,
+# blaze rod, stronghold, End, dragon. Le record (meilleur score) est garde dans stats.yml.
+best-run:
+  par-minutes: [4, 10, 14, 30, 35, 45, 55, 70, 80, 95]
