@@ -33,8 +33,13 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -57,10 +62,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -77,7 +84,7 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class UhcPlugin extends JavaPlugin implements Listener {
 
-    private static final long FINALE_TICKS = 460L; // 23 secondes
+    private static final long FINALE_TICKS = 900L; // 45 secondes : le professeur a le temps de tout dire
 
     // Gros caps dans l'ordre : id (cle de config), advancement Minecraft, libelle, points par defaut
     private static final String[][] CAPS = {
@@ -161,6 +168,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         double hearts = 0.0;
         double applied = 0.0;
         double announced = 0.0;
+        UUID victim = null;
         long last = 0L;
         String detail = ""; // type du monstre a l'origine des degats
         BukkitTask task = null;
@@ -196,14 +204,46 @@ public class UhcPlugin extends JavaPlugin implements Listener {
     private final java.util.Set<String> teamCaps = new java.util.HashSet<>(); // objectifs faits par l'equipe
     private final Map<String, Integer> advancementCount = new HashMap<>();    // combien de joueurs l'ont reussi
     private boolean chestFirstTaken = false;
+    private final Set<String> placedChests = new HashSet<>();   // coffres poses par un joueur (ne comptent pas)
     private int quipTimer = 180;
 
-    // Le professeur : personnage qui commente la run avec des bulles (barre violette en haut de l'ecran)
+    // Le professeur : personnage qui commente la run (bulle dans le coin gauche, voix, machine a ecrire)
     private final java.util.ArrayDeque<String> teacherQueue = new java.util.ArrayDeque<>();
-    private BossBar teacherBar;
-    private String lastBubbleText = "";
-    private int teacherLeft = 0;   // ticks restants pour la bulle affichee
-    private int teacherTotal = 1;
+    private BossBar teacherBar;               // barre de texte pour les joueurs qui n'ont pas le pack
+    private TeacherBubble bubble = null;
+
+    private static final class TeacherBubble {
+        final List<String> lines;
+        final String text;
+        final String flat;                    // texte sans retours a la ligne : sert a compter les lettres
+        final int len;
+        final int total;                      // duree totale d'affichage (ticks)
+        int revealed = 0;                     // lettres deja ecrites
+        double revealedD = 0.0;
+        int pause = 0;                        // pause apres la ponctuation (ticks)
+        int age = 0;
+        int blip = 0;
+        final java.util.Set<UUID> fallback = new java.util.HashSet<>();
+
+        TeacherBubble(List<String> lines, String text, int total) {
+            this.lines = lines;
+            this.text = text;
+            this.flat = String.join("", lines);
+            this.len = flat.length();
+            this.total = total;
+        }
+    }
+
+    // Reactions du professeur
+    private final Map<UUID, Integer> advancementsByPlayer = new HashMap<>();
+    private final Map<UUID, Long> praiseTimes = new HashMap<>();
+    private long lastPraise = 0L;
+    private UUID lastLeader = null;
+    private int lastMilestoneMinute = 0;
+    private boolean firstKillDone = false;
+    private String worstName = null;          // pire incident de la run (palmares de fin)
+    private double worstHearts = 0.0;
+    private String worstCause = "";
     private boolean packAutoDone = false;
     private long introUntil = 0L;
 
@@ -214,6 +254,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         saveDefaultConfig();
         getDataFolder().mkdirs();
         Ui.setIconAdvances(getConfig().getIntegerList("pack.icon-advances"));
+        Ui.setHudShiftY(getConfig().getInt("ui.objectives-shift-y", 0));
         flagFile = new File(Bukkit.getWorldContainer(), "reset.flag");
         statsFile = new File(getDataFolder(), "stats.yml");
         miniMapKey = new NamespacedKey(this, "minimap"); // anciennes minimaps (retirees a la connexion)
@@ -234,7 +275,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
 
         Bukkit.getScheduler().runTaskTimer(this, this::everySecond, 20L, 20L);
         Bukkit.getScheduler().runTaskTimer(this, this::updateRadar, 20L, 10L);
-        Bukkit.getScheduler().runTaskTimer(this, this::tickTeacher, 5L, 5L);
+        Bukkit.getScheduler().runTaskTimer(this, this::tickTeacher, 5L, 2L);
     }
 
     @Override
@@ -277,6 +318,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
             }
             checkIntro();
             tickQuips();
+            tickReactions();
             autoPack();
         }
 
@@ -367,6 +409,67 @@ public class UhcPlugin extends JavaPlugin implements Listener {
             }
         }
         teacherSay(Jokes.ambient(ctx), false);
+    }
+
+    // ---------- Reactions du professeur : paliers de duree, classement, felicitations ----------
+
+    private static final int[] MILESTONES = {10, 20, 30, 45, 60, 90, 120, 180};
+
+    private void tickReactions() {
+        if (!getConfig().getBoolean("teacher.enabled", true)) return;
+
+        // Paliers de duree : 10, 20, 30, 45 minutes...
+        if (survivedSeconds % 60 == 0) {
+            int minutes = survivedSeconds / 60;
+            for (int m : MILESTONES) {
+                if (minutes == m && lastMilestoneMinute < m) {
+                    lastMilestoneMinute = m;
+                    teacherSay(Jokes.milestone(m), false);
+                }
+            }
+        }
+
+        // Changement de leader au classement des notes (il faut au moins 2 joueurs)
+        if (survivedSeconds % 20 == 0 && Bukkit.getOnlinePlayers().size() >= 2) {
+            UUID best = null;
+            double bestScore = -1.0;
+            boolean tie = false;
+            for (Player o : Bukkit.getOnlinePlayers()) {
+                double sc = score(o.getUniqueId());
+                if (sc > bestScore + 0.05) {
+                    bestScore = sc;
+                    best = o.getUniqueId();
+                    tie = false;
+                } else if (Math.abs(sc - bestScore) <= 0.05) {
+                    tie = true;
+                }
+            }
+            if (best != null && !tie) {
+                if (lastLeader != null && !lastLeader.equals(best) && Bukkit.getPlayer(lastLeader) != null
+                        && survivedSeconds > 120) {
+                    teacherSay(Jokes.leaderChange(nameOf(best), nameOf(lastLeader)), false);
+                }
+                lastLeader = best;
+            }
+        }
+    }
+
+    // Un joueur reussit un objectif : le professeur titille celui qui est le plus en retard
+    private void teaseSlacker(Player doer) {
+        if (Bukkit.getOnlinePlayers().size() < 2 || ThreadLocalRandom.current().nextInt(100) >= 55) return;
+        Player slacker = null;
+        int least = Integer.MAX_VALUE;
+        for (Player o : Bukkit.getOnlinePlayers()) {
+            if (o.equals(doer)) continue;
+            int c = advancementsByPlayer.getOrDefault(o.getUniqueId(), 0);
+            if (c < least) {
+                least = c;
+                slacker = o;
+            }
+        }
+        if (slacker != null) {
+            teacherSay(Jokes.tease(doer.getName(), slacker.getName()), true);
+        }
     }
 
     // Lance d'office /uhcpack des que quelqu'un est connecte (une fois par demarrage du serveur)
@@ -726,13 +829,35 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         sendPointsLine(p, applied, reason, quip);
     }
 
+    // Duree sans nouveau degat apres laquelle l'incident est "fini" : courte pour un coup unique (chute, explosion),
+    // un peu plus longue pour les degats qui reviennent par a-coups (feu, poison...).
+    private long windowMs(String key) {
+        double def = cfg("penalties.incident-window-seconds", 1.0);
+        double sec = cfg("penalties.window-by-cause." + key, def);
+        return (long) (Math.max(0.2, sec) * 1000.0);
+    }
+
+    // Les petites chutes (quelques blocs) sont sanctionnees un peu plus durement : un bonus qui s'efface vers 2 cœurs
+    private double smallFallBonus(double hearts) {
+        double limit = cfg("penalties.small-fall-hearts", 2.0);
+        double bonus = cfg("penalties.small-fall-bonus", 0.55);
+        if (hearts >= limit) return 0.0;
+        return bonus * (limit - hearts) / Math.max(0.1, limit - 0.5);
+    }
+
+    private double incidentTotal(String key, String tier, Incident inc) {
+        double total = tierRate(tier) * Math.pow(inc.hearts, tierExponent(tier));
+        if (key.equals("FALL")) total += smallFallBonus(inc.hearts);
+        return total;
+    }
+
     // Sanction progressive : une seule annonce a la fin de l'incident (total des points perdus)
     private void scheduleIncidentAnnounce(Player victim, Incident inc, String key, String tier) {
         if (inc.task != null) {
             inc.task.cancel();
         }
         final UUID id = victim.getUniqueId();
-        long ticks = Math.max(10L, (long) (cfg("penalties.incident-window-seconds", 2.5) * 20));
+        long ticks = Math.max(6L, windowMs(key) / 50L);
         inc.task = Bukkit.getScheduler().runTaskLater(this, () -> {
             inc.task = null;
             if (resetting) return;
@@ -740,15 +865,45 @@ public class UhcPlugin extends JavaPlugin implements Listener {
             if (p == null) return;
 
             // Les degats se sont arretes : on calcule le total UNE seule fois
-            double total = tierRate(tier) * Math.pow(inc.hearts, tierExponent(tier));
+            double total = incidentTotal(key, tier, inc);
             double lost = total - inc.applied;
             if (lost < 0.05) return;
             inc.applied = total;
 
+            if (inc.hearts > worstHearts) {
+                worstHearts = inc.hearts;
+                worstName = p.getName();
+                worstCause = causeLabel(key);
+            }
             addPoints(p, -lost, tierLabel(tier), "dmg:" + key, null, false);
             announcePoints(p, -lost, tierLabel(tier) + " : " + causeLabel(key),
                     Jokes.damage(p.getName(), key, inc.detail, inc.hearts, lost, stage()), inc.hearts);
         }, ticks);
+    }
+
+    // Mort : les incidents en cours sont comptes tout de suite (sinon leurs points seraient perdus)
+    private void flushIncidents() {
+        for (Map.Entry<String, Incident> en : new ArrayList<>(incidents.entrySet())) {
+            Incident inc = en.getValue();
+            if (inc.task == null || inc.victim == null) continue;
+            inc.task.cancel();
+            inc.task = null;
+            Player p = Bukkit.getPlayer(inc.victim);
+            if (p == null) continue;
+            String key = en.getKey().substring(en.getKey().indexOf(':') + 1);
+            String tier = tierOf(key);
+            double total = incidentTotal(key, tier, inc);
+            double lost = total - inc.applied;
+            if (lost >= 0.05) {
+                inc.applied = total;
+                if (inc.hearts > worstHearts) {
+                    worstHearts = inc.hearts;
+                    worstName = p.getName();
+                    worstCause = causeLabel(key);
+                }
+                addPoints(p, -lost, tierLabel(tier), "dmg:" + key, null, false);
+            }
+        }
     }
 
     // Classement : la note, puis les bons points gagnes, puis les coeurs perdus (pour departager)
@@ -794,8 +949,23 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         if (rank == 1) {
             advancementFirst.putIfAbsent(key, p.getUniqueId());
         }
+        advancementsByPlayer.merge(p.getUniqueId(), 1, Integer::sum);
 
+        // Ce que dira le professeur : s'il manque un objectif PLUS FACILE (diamants avant le fer...), il le releve
+        String capLine = capIndex >= 0 ? Jokes.cap(capIndex, p.getName()) : null;
         if (capIndex >= 0 && rank == 1) {
+            int missingIndex = -1;
+            int missingCount = 0;
+            for (int i = 0; i < capIndex; i++) {
+                if (!teamCaps.contains(CAPS[i][0])) {
+                    if (missingIndex < 0) missingIndex = i;
+                    missingCount++;
+                }
+            }
+            if (missingIndex >= 0) {
+                String special = Jokes.outOfOrder(p.getName(), capIndex, missingIndex, CAPS[missingIndex][2], missingCount);
+                if (special != null && !special.isEmpty()) capLine = special;
+            }
             markCap(CAPS[capIndex][0]); // objectif fait pour toute l'equipe
         }
 
@@ -813,7 +983,12 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                         .append(Component.text(" a réussi un défi collectif : " + name + " → tout le monde gagne "
                                 + pointsText(pts), NamedTextColor.GREEN)));
                 if (capIndex >= 0) {
-                    teacherSay(Jokes.cap(capIndex, p.getName()), true);
+                    teacherSay(capLine, true);
+                    teaseSlacker(p);
+                } else if (key.equals("adventure/sleep_in_bed")) {
+                    teacherSay(Jokes.bed(p.getName()), true);
+                } else {
+                    teacherSay(Jokes.collective(p.getName(), label), true);
                 }
             }
             return;
@@ -826,7 +1001,8 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                 addPoints(p, capPoints(capIndex), "cap passé : " + CAPS[capIndex][2]);
                 p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.2f);
                 celebrateCap(p, CAPS[capIndex][2]);
-                teacherSay(Jokes.cap(capIndex, p.getName()), true);
+                teacherSay(capLine, true);
+                teaseSlacker(p);
             } else {
                 addPoints(p, cfg("bonus.cap-later", 0.3), "cap déjà passé par l'équipe : " + CAPS[capIndex][2]);
                 p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.0f);
@@ -886,6 +1062,12 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         if (holdsTotem(p)) return; // le totem d'immortalite fait son travail normalement
 
         e.setCancelled(true);
+        double fatal = Math.max(0.0, Math.min(e.getFinalDamage(), p.getHealth()));
+        if (fatal > 0) {
+            heartsLost.merge(p.getUniqueId(), fatal / 2.0, Double::sum);
+            totalHeartsLost.merge(p.getUniqueId(), fatal / 2.0, Double::sum);
+            applyDamagePenalty(p, e, fatal);
+        }
         startReset(p, joke(p, e), causeName(p, e));
     }
 
@@ -985,7 +1167,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         // Sanction progressive : les degats de meme cause rapproches forment un "incident".
         // Les points sont calcules et annonces UNE SEULE FOIS, quand les degats s'arretent.
         String tier = tierOf(key);
-        long window = (long) (cfg("penalties.incident-window-seconds", 2.5) * 1000);
+        long window = windowMs(key);
         long now = System.currentTimeMillis();
         Incident incident = incidents.computeIfAbsent(victim.getUniqueId() + ":" + key, x -> new Incident());
         if (now - incident.last > window) {
@@ -995,11 +1177,17 @@ public class UhcPlugin extends JavaPlugin implements Listener {
             incident.detail = "";
         }
         incident.hearts += damage / 2.0;
+        incident.victim = victim.getUniqueId();
         incident.last = now;
         String extra = detailOf(victim, ev);
         if (!extra.isEmpty()) {
             incident.detail = extra;
         }
+
+        // Retour IMMEDIAT : les cœurs perdus s'affichent tout de suite (au-dessus de la vie). Les points, eux, sont
+        // calcules a la fin des degats et ajoutes sur cette meme ligne.
+        Bukkit.getServer().sendActionBar(nameTag(victim.getName(), NamedTextColor.WHITE)
+                .append(Component.text("  -" + hearts(incident.hearts) + " ❤", NamedTextColor.RED)));
 
         scheduleIncidentAnnounce(victim, incident, key, tier);
     }
@@ -1025,113 +1213,172 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         return getConfig().getString("teacher.name", "ProfB");
     }
 
+    // Nombre de lignes de texte que l'ecran peut afficher : le client ne dessine qu'un nombre limite de barres de boss
+    // (tant que le total des hauteurs reste sous 1/3 de l'ecran). Le HUD, le radar et le nom du prof en prennent 3.
+    private int bubbleMaxLines() {
+        int h = getConfig().getInt("ui.gui-height", 360);
+        int bars = (int) Math.ceil(Math.max(0.0, h / 3.0 - 12.0) / 19.0);
+        int max = Math.max(1, getConfig().getInt("teacher.max-lines", 3));
+        return Math.max(1, Math.min(max, bars - 3));
+    }
+
     // important = false : la remarque est ignoree si le professeur est deja en train de parler
     private void teacherSay(String text, boolean important) {
         if (text == null || text.isBlank()) return;
         if (!getConfig().getBoolean("teacher.enabled", true)) return;
-        if (!important && (teacherLeft > 0 || !teacherQueue.isEmpty())) return;
-        for (String part : splitBubble(text, Math.max(30, getConfig().getInt("teacher.max-chars", 66)))) {
+        if (!important && (bubble != null || !teacherQueue.isEmpty())) return;
+        // On coupe par phrases entieres : une bulle ne s'arrete jamais au milieu d'une phrase
+        for (String part : Ui.splitBubbles(text, Ui.LINE_CHARS, bubbleMaxLines())) {
             if (teacherQueue.size() < 8) {
                 teacherQueue.add(part);
             }
         }
     }
 
-    private List<String> splitBubble(String text, int max) {
-        List<String> parts = new ArrayList<>();
-        String rest = text.trim();
-        while (rest.length() > max) {
-            int cut = rest.lastIndexOf(' ', max);
-            if (cut < max / 2) cut = max;
-            parts.add(rest.substring(0, cut).trim());
-            rest = rest.substring(cut).trim();
-        }
-        if (!rest.isEmpty()) {
-            parts.add(rest);
-        }
-        return parts;
+    // Le professeur se tait tout de suite (ex : ecran de fin)
+    private void teacherClear() {
+        teacherQueue.clear();
+        endBubble();
     }
 
-    // Toutes les 5 ticks : affiche la bulle suivante, fait baisser la jauge, puis retire la barre
+    private void endBubble() {
+        bubble = null;
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (teacherBar != null) p.hideBossBar(teacherBar);
+            hideBubble(p);
+        }
+    }
+
+    // Toutes les 2 ticks : ecrit la bulle lettre par lettre (avec les petits bruits de voix), puis la retire
     private void tickTeacher() {
+        if (!getConfig().getBoolean("teacher.enabled", true)) return;
         Collection<? extends Player> online = Bukkit.getOnlinePlayers();
 
-        if (teacherLeft > 0) {
-            teacherLeft -= 5;
-            if (teacherLeft <= 0) {
-                teacherLeft = 0;
+        TeacherBubble b = bubble;
+        if (b != null) {
+            b.age += 2;
+            if (b.revealed < b.len) {
+                advanceReveal(b, online);
+            }
+            if (b.age >= b.total) {
+                bubble = null;
                 if (teacherQueue.isEmpty()) {
-                    for (Player p : online) {
-                        if (teacherBar != null) p.hideBossBar(teacherBar);
-                        hideBubble(p);
-                    }
+                    endBubble();
                 }
-            } else if (teacherBar != null) {
-                animateTeacher(online);
-                teacherBar.progress(Math.max(0f, Math.min(1f, teacherLeft / (float) teacherTotal)));
-                for (Player p : online) {
-                    if (heads.hasUi(p)) {
-                        if (!bubbleBars.containsKey(p.getUniqueId())) showBubble(p, lastBubbleText);
-                    } else if (teacherBar != null) {
-                        p.showBossBar(teacherBar); // pour ceux qui se connectent pendant la bulle
-                    }
+            } else {
+                boolean talking = b.revealed < b.len;
+                int frame = talking ? 1 + (b.age / 4) % 2 : 0;   // bouche qui s'ouvre et se ferme
+                if (teacherBar != null) {
+                    teacherBar.progress(Math.max(0f, Math.min(1f, 1f - b.age / (float) b.total)));
                 }
+                renderBubble(b, frame, online);
             }
         }
 
-        if (teacherLeft <= 0 && !teacherQueue.isEmpty() && !online.isEmpty()) {
-            String text = teacherQueue.poll();
-            Component bubble = Component.text(teacherName() + " : ", NamedTextColor.GOLD, TextDecoration.BOLD)
-                    .append(Component.text(text, NamedTextColor.WHITE));
-            teacherTotal = 40 + (int) (text.length() * 1.5);
-            teacherLeft = teacherTotal;
-            if (teacherBar == null) {
-                teacherBar = BossBar.bossBar(bubble, 1.0f, BossBar.Color.PURPLE, BossBar.Overlay.PROGRESS);
-            } else {
-                teacherBar.name(bubble);
-                teacherBar.progress(1.0f);
+        if (bubble == null && !teacherQueue.isEmpty() && !online.isEmpty()) {
+            startBubble(teacherQueue.poll(), online);
+        }
+    }
+
+    private void startBubble(String part, Collection<? extends Player> online) {
+        List<String> lines = Ui.wrap(part, Ui.LINE_CHARS);
+        double cps = Math.max(8.0, getConfig().getDouble("teacher.chars-per-second", 26.0));
+        double hold = Math.max(0.5, getConfig().getDouble("teacher.hold-ticks-per-char", 1.5));
+        int len = String.join("", lines).length();
+        // duree = temps d'ecriture + temps de lecture (plus il y a de lettres, plus on laisse de temps)
+        int total = (int) (len * 20.0 / cps) + 36 + (int) (len * hold);
+        TeacherBubble b = new TeacherBubble(lines, part, total);
+        bubble = b;
+
+        Component text = Component.text(teacherName() + " : ", NamedTextColor.GOLD, TextDecoration.BOLD)
+                .append(Component.text(part, NamedTextColor.WHITE));
+        if (teacherBar == null) {
+            teacherBar = BossBar.bossBar(text, 1.0f, BossBar.Color.PURPLE, BossBar.Overlay.PROGRESS);
+        } else {
+            teacherBar.name(text);
+            teacherBar.progress(1.0f);
+        }
+        renderBubble(b, 0, online);
+    }
+
+    private void advanceReveal(TeacherBubble b, Collection<? extends Player> online) {
+        if (b.pause > 0) {
+            b.pause -= 2;
+            return;
+        }
+        double cps = Math.max(8.0, getConfig().getDouble("teacher.chars-per-second", 26.0));
+        b.revealedD += cps / 10.0;                       // 2 ticks = 1/10 de seconde
+        int target = Math.min(b.len, (int) b.revealedD);
+        while (b.revealed < target) {
+            char c = b.flat.charAt(b.revealed);
+            b.revealed++;
+            if (Character.isLetter(c)) {
+                b.blip++;
+                if (b.blip >= 3) {                       // un petit bruit de voix toutes les 3 lettres
+                    b.blip = 0;
+                    teacherBlip(online);
+                }
             }
-            lastBubbleText = text;
-            for (Player p : online) {
-                hideBubble(p);
-                if (heads.hasUi(p)) {
-                    p.hideBossBar(teacherBar);
-                    showBubble(p, text);
-                } else {
+            boolean nextDot = b.revealed < b.len && b.flat.charAt(b.revealed) == '.';
+            if ((c == '.' || c == '!' || c == '?') && !nextDot) {
+                b.pause = 8;                              // respiration apres une phrase
+                break;
+            }
+            if (c == ',' || c == ';' || c == ':') {
+                b.pause = 4;
+                break;
+            }
+        }
+        b.revealedD = b.revealed;
+    }
+
+    // Petit "bla" a chaque groupe de lettres : donne une voix au professeur
+    private void teacherBlip(Collection<? extends Player> online) {
+        float volume = (float) getConfig().getDouble("teacher.voice-volume", 0.5);
+        if (volume <= 0.0f) return;
+        ThreadLocalRandom r = ThreadLocalRandom.current();
+        String sound = "talk" + (1 + r.nextInt(4));
+        float pitch = 0.88f + r.nextFloat() * 0.34f;
+        for (Player p : online) {
+            heads.play(p, sound, Sound.BLOCK_NOTE_BLOCK_BIT, volume, pitch);
+        }
+    }
+
+    // Dessine la bulle pour chaque joueur : portrait + panneau dans le coin gauche (avec le pack),
+    // ou simple barre violette en haut de l'ecran (sans le pack)
+    private void renderBubble(TeacherBubble b, int frame, Collection<? extends Player> online) {
+        int guiWidth = getConfig().getInt("ui.gui-width", 640);
+        int margin = getConfig().getInt("teacher.margin", 4);
+        List<Component> rows = Ui.bubble(teacherName(), b.lines, b.revealed, frame, guiWidth, margin);
+
+        for (Player p : online) {
+            UUID id = p.getUniqueId();
+            if (!heads.hasUi(p)) {
+                if (teacherBar != null && b.fallback.add(id)) {
+                    hideBubble(p);
                     p.showBossBar(teacherBar);
                 }
-                p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_AMBIENT, 0.5f, 1.3f);
+                continue;
+            }
+            if (b.fallback.remove(id) && teacherBar != null) {
+                p.hideBossBar(teacherBar); // le joueur vient de charger le pack
+            }
+            List<BossBar> bars = bubbleBars.get(id);
+            if (bars == null || bars.size() != rows.size()) {
+                hideBubble(p);
+                bars = new ArrayList<>();
+                for (Component c : rows) {
+                    BossBar bar = BossBar.bossBar(c, 1.0f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
+                    bars.add(bar);
+                    p.showBossBar(bar);
+                }
+                bubbleBars.put(id, bars);
+            } else {
+                for (int i = 0; i < rows.size(); i++) {
+                    bars.get(i).name(rows.get(i));
+                }
             }
         }
-    }
-
-    // Petite animation : le prof "parle" (bouche qui s'ouvre, tete qui rebondit) pendant ~3/4 de la bulle
-    private void animateTeacher(Collection<? extends Player> online) {
-        int elapsed = teacherTotal - teacherLeft;
-        int frame = elapsed < teacherTotal * 3 / 4 ? 1 + (elapsed / 5) % 2 : 0;
-        for (Player p : online) {
-            List<BossBar> rows = bubbleBars.get(p.getUniqueId());
-            if (rows == null || rows.size() < 2) continue;
-            List<Component> comps = Ui.bubble(teacherName(), lastBubbleText, 36, frame);
-            for (int k = 0; k < comps.size() && k + 1 < rows.size(); k++) {
-                rows.get(k + 1).name(comps.get(k));
-            }
-        }
-    }
-
-    // Bulle a portrait : une barre de boss (invisible) par rangee, dessinee avec la police du pack
-    private void showBubble(Player p, String text) {
-        List<BossBar> rows = new ArrayList<>();
-        // Rangee vide : laisse la place sous la barre d'objectifs (le panneau de la bulle depasse un peu au-dessus de sa rangee)
-        BossBar spacer = BossBar.bossBar(Component.text(" "), 1.0f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
-        rows.add(spacer);
-        p.showBossBar(spacer);
-        for (Component c : Ui.bubble(teacherName(), text, 36, 0)) {
-            BossBar b = BossBar.bossBar(c, 1.0f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
-            rows.add(b);
-            p.showBossBar(b);
-        }
-        bubbleBars.put(p.getUniqueId(), rows);
     }
 
     private String causeLabel(String key) {
@@ -1164,7 +1411,78 @@ public class UhcPlugin extends JavaPlugin implements Listener {
             kills.merge(killer.getUniqueId(), 1, Integer::sum);
             totalKills.merge(killer.getUniqueId(), 1, Integer::sum);
             names.put(killer.getUniqueId(), killer.getName());
+
+            String type = e.getEntityType().name();
+            String label = type.toLowerCase(Locale.ROOT).replace('_', ' ');
+            if (type.equals("WITHER") || type.equals("ELDER_GUARDIAN") || type.equals("WARDEN") || type.equals("RAVAGER")) {
+                teacherSay(Jokes.bossKill(killer.getName(), label), true);
+            } else if (!firstKillDone) {
+                firstKillDone = true;
+                teacherSay(Jokes.firstKill(killer.getName(), label), false);
+            }
         }
+    }
+
+    // ---------- Felicitations du professeur : bons reflexes ----------
+
+    private boolean praiseReady(Player p, long perPlayerMillis) {
+        long now = System.currentTimeMillis();
+        return now - praiseTimes.getOrDefault(p.getUniqueId(), 0L) >= perPlayerMillis;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onConsume(PlayerItemConsumeEvent e) {
+        if (resetting || !getConfig().getBoolean("teacher.enabled", true)) return;
+        Player p = e.getPlayer();
+        Material m = e.getItem().getType();
+        if (!praiseReady(p, 20_000L)) return;
+        long now = System.currentTimeMillis();
+        ThreadLocalRandom r = ThreadLocalRandom.current();
+
+        String line = null;
+        boolean strong = false;
+        if (m == Material.GOLDEN_APPLE || m == Material.ENCHANTED_GOLDEN_APPLE) {
+            line = Jokes.eatGolden(p.getName());
+            strong = true;
+        } else if (m == Material.MILK_BUCKET) {
+            if (p.hasPotionEffect(PotionEffectType.POISON) || p.hasPotionEffect(PotionEffectType.WITHER)
+                    || p.hasPotionEffect(PotionEffectType.NAUSEA) || p.hasPotionEffect(PotionEffectType.WEAKNESS)
+                    || p.hasPotionEffect(PotionEffectType.BLINDNESS)) {
+                line = Jokes.milk(p.getName());
+                strong = true;
+            }
+        } else if (m == Material.APPLE) {
+            if (now - lastPraise > 45_000L && r.nextInt(100) < 70) line = Jokes.eatApple(p.getName());
+        } else if (m.isEdible() && p.getFoodLevel() <= 10) {
+            if (now - lastPraise > 90_000L && r.nextInt(100) < 45) line = Jokes.eatSmart(p.getName());
+        }
+        if (line == null) return;
+        praiseTimes.put(p.getUniqueId(), now);
+        lastPraise = now;
+        teacherSay(line, strong);
+    }
+
+    // Seau d'eau pose EN PLEINE CHUTE : le geste des pros
+    @EventHandler(ignoreCancelled = true)
+    public void onBucket(PlayerBucketEmptyEvent e) {
+        if (resetting || e.getBucket() != Material.WATER_BUCKET) return;
+        Player p = e.getPlayer();
+        if (p.getFallDistance() < 5.0f || !praiseReady(p, 15_000L)) return;
+        long now = System.currentTimeMillis();
+        praiseTimes.put(p.getUniqueId(), now);
+        lastPraise = now;
+        addPoints(p, cfg("bonus.clutch", 0.5), "seau d'eau en pleine chute", "clutch");
+        teacherSay(Jokes.clutch(p.getName()), true);
+        for (Player o : Bukkit.getOnlinePlayers()) {
+            heads.play(o, "cap", Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.6f, 1.3f);
+        }
+    }
+
+    // Totem d'immortalite active : la mort a ete evitee de justesse
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onResurrect(EntityResurrectEvent e) {
+        if (resetting || !(e.getEntity() instanceof Player p)) return;
+        teacherSay(Jokes.totem(p.getName()), true);
     }
 
     @SuppressWarnings("deprecation")
@@ -1194,6 +1512,37 @@ public class UhcPlugin extends JavaPlugin implements Listener {
     }
 
     // ---------- Premier coffre ouvert ----------
+    // Seuls les coffres du monde comptent : un coffre pose par un joueur est ignore.
+
+    private String blockKey(org.bukkit.block.Block b) {
+        return b.getWorld().getName() + ":" + b.getX() + ":" + b.getY() + ":" + b.getZ();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlaceChest(BlockPlaceEvent e) {
+        Material t = e.getBlockPlaced().getType();
+        if (t == Material.CHEST || t == Material.TRAPPED_CHEST) {
+            placedChests.add(blockKey(e.getBlockPlaced()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBreakChest(BlockBreakEvent e) {
+        placedChests.remove(blockKey(e.getBlock()));
+    }
+
+    private boolean isPlacedChest(InventoryHolder holder) {
+        if (holder instanceof Chest c) {
+            return placedChests.contains(blockKey(c.getBlock()));
+        }
+        if (holder instanceof DoubleChest d) {
+            InventoryHolder left = d.getLeftSide();
+            InventoryHolder right = d.getRightSide();
+            return (left instanceof Chest lc && placedChests.contains(blockKey(lc.getBlock())))
+                    || (right instanceof Chest rc && placedChests.contains(blockKey(rc.getBlock())));
+        }
+        return false;
+    }
 
     @EventHandler(ignoreCancelled = true)
     public void onChestOpen(InventoryOpenEvent e) {
@@ -1201,6 +1550,7 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         if (!(e.getPlayer() instanceof Player p)) return;
         InventoryHolder holder = e.getInventory().getHolder();
         if (!(holder instanceof Chest) && !(holder instanceof DoubleChest)) return;
+        if (isPlacedChest(holder)) return; // coffre pose par un joueur : pas de bonus, et le "premier coffre" reste disponible
 
         chestFirstTaken = true;
         addPoints(p, cfg("bonus.chest-first", 0.5), "premier à ouvrir un coffre", "chest", Jokes.chest(p.getName()), true);
@@ -1330,7 +1680,11 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                 if (!o.equals(p)) others.add(o);
             }
             if (others.isEmpty()) {
-                hideRadar(p);
+                if (heads.hasUi(p)) {
+                    setRadar(p, Component.text(" "), BossBar.Color.WHITE); // ligne vide : la bulle reste a la meme place
+                } else {
+                    hideRadar(p);
+                }
                 continue;
             }
             others.sort((a, b) -> Double.compare(horizontalDistance(p, a), horizontalDistance(p, b)));
@@ -1352,14 +1706,19 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                 }
             }
 
-            BossBar bar = radars.get(p.getUniqueId());
-            if (bar == null) {
-                bar = BossBar.bossBar(text, 1.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
-                radars.put(p.getUniqueId(), bar);
-                p.showBossBar(bar);
-            } else {
-                bar.name(text);
-            }
+            setRadar(p, text, BossBar.Color.BLUE);
+        }
+    }
+
+    private void setRadar(Player p, Component text, BossBar.Color color) {
+        BossBar bar = radars.get(p.getUniqueId());
+        if (bar == null) {
+            bar = BossBar.bossBar(text, 1.0f, color, BossBar.Overlay.PROGRESS);
+            radars.put(p.getUniqueId(), bar);
+            p.showBossBar(bar);
+        } else {
+            bar.name(text);
+            if (bar.color() != color) bar.color(color);
         }
     }
 
@@ -1406,7 +1765,8 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                     flags[i] = teamCaps.contains(CAPS[i][0]);
                 }
                 double sc = score(p.getUniqueId());
-                text = Ui.objectives(flags, next, hudClock(survivedSeconds), deaths + 1, note(sc), noteColor(sc));
+                text = Ui.objectives(flags, next, hudClock(survivedSeconds), deaths + 1, note(sc), noteColor(sc),
+                        getConfig().getInt("ui.objectives-shift-x", 30));
             }
             BossBar bar = hudBars.get(p.getUniqueId());
             if (bar != null && hudUi.getOrDefault(p.getUniqueId(), false) != ui) {
@@ -1421,6 +1781,12 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                 hudBars.put(p.getUniqueId(), bar);
                 hudUi.put(p.getUniqueId(), ui);
                 p.showBossBar(bar);
+                // Une barre ajoutee apres les autres s'affiche en dessous : on remet le radar sous le HUD
+                BossBar radar = radars.get(p.getUniqueId());
+                if (radar != null) {
+                    p.hideBossBar(radar);
+                    p.showBossBar(radar);
+                }
             } else {
                 bar.name(text);
                 if (!ui) bar.progress(progress);
@@ -1499,10 +1865,10 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         order.sort((a, b) -> nameOf(a).compareToIgnoreCase(nameOf(b)));
         StringBuilder sb = new StringBuilder("Notes de la classe : ");
         for (int i = 0; i < order.size(); i++) {
-            if (i > 0) sb.append("  ·  ");
+            if (i > 0) sb.append(", ");
             sb.append(nameOf(order.get(i))).append(" ").append(note(score(order.get(i))));
         }
-        return sb.toString();
+        return sb.append('.').toString();
     }
 
     private List<Component> gradeLines() {
@@ -1539,7 +1905,9 @@ public class UhcPlugin extends JavaPlugin implements Listener {
 
     private void startReset(Player dead, String joke, String cause) {
         if (resetting) return;
+        flushIncidents();   // les points des degats en cours comptent dans les notes finales
         resetting = true;
+        teacherClear();
 
         for (Player o : Bukkit.getOnlinePlayers()) {
             heads.play(o, "run_end", Sound.ENTITY_WITHER_DEATH, 0.6f, 0.8f);
@@ -1603,72 +1971,58 @@ public class UhcPlugin extends JavaPlugin implements Listener {
 
         // Ecran noir pour tout le monde
         for (Player p : Bukkit.getOnlinePlayers()) {
-            p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20 * 24, 0, false, false, false));
+            p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20 * 47, 0, false, false, false));
         }
 
-        Title.Times times = Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(4), Duration.ofMillis(500));
+        Title.Times times = Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(6), Duration.ofMillis(800));
 
-        String statsText = "Run n°" + run.number + " : " + runText(run)
-                + (record ? " - NOUVELLE MEILLEURE RUN !" : !runs.contains(run) ? "" : " | classement : " + rank + "/" + runs.size()
-                + (runs.isEmpty() ? "" : " | meilleure : " + runText(runs.get(0))));
+        // A l'ecran : seulement l'essentiel (qui, combien de temps, quel score). Le professeur raconte tout le reste.
+        String shortStats = format(time) + "  ·  " + note(run.score) + " pts";
 
         if (dead != null) {
             String name = dead.getName();
 
-            teacherSay("Bravo " + name + " pour avoir ruiné les espoirs de cette run.", true);
+            Bukkit.getServer().showTitle(Title.title(
+                    Component.text("FIN DE RUN", NamedTextColor.RED),
+                    nameTag(name, NamedTextColor.GOLD).append(Component.text("  ·  " + shortStats, NamedTextColor.GOLD)),
+                    times));
+
+            // Le professeur : la mort, le verdict, le palmares, les notes
             teacherSay(joke, true);
-            teacherSay(statsText, true);
             teacherSay(Jokes.runVerdict(record, run.caps, CAPS.length, run.score,
                     runs.isEmpty() ? run.score : runs.get(0).score), true);
-            for (String sr : splitRecords) {
-                teacherSay("Record battu : " + sr + ".", true);
+            String hunter = null;
+            int topKills = 0;
+            for (Map.Entry<UUID, Integer> k : kills.entrySet()) {
+                if (k.getValue() > topKills) {
+                    topKills = k.getValue();
+                    hunter = nameOf(k.getKey());
+                }
             }
-
-            // 1) "Bravo <nom>"
-            Bukkit.getServer().showTitle(Title.title(
-                    Component.text("Bravo ", NamedTextColor.RED).append(nameTag(name, NamedTextColor.RED)),
-                    Component.text("pour avoir ruiné les espoirs de cette run", NamedTextColor.GOLD),
-                    times));
-
-            // 2) la blague sur la facon de mourir
-            Bukkit.getScheduler().runTaskLater(this, () ->
-                    Bukkit.getServer().showTitle(Title.title(
-                            Component.empty(),
-                            Component.text(joke, NamedTextColor.WHITE),
-                            Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(5), Duration.ofMillis(500)))),
-                    100L);
+            String palmares = Jokes.palmares(worstName, worstHearts, worstCause, hunter, topKills);
+            if (!palmares.isEmpty()) {
+                teacherSay(palmares, true);
+            }
+            for (int i = 0; i < Math.min(2, splitRecords.size()); i++) {
+                teacherSay("Record battu : " + splitRecords.get(i) + ".", true);
+            }
+            teacherSay(gradeOneLine(), true);
         } else {
-            teacherSay("Reset manuel de la partie.", true);
-            teacherSay(statsText, true);
-            for (String sr : splitRecords) {
-                teacherSay("Record battu : " + sr + ".", true);
-            }
             Bukkit.getServer().showTitle(Title.title(
                     Component.text("RESET", NamedTextColor.RED),
-                    Component.text(statsText, NamedTextColor.GOLD),
+                    Component.text(shortStats, NamedTextColor.GOLD),
                     times));
+            teacherSay("Reset manuel de la partie. " + Jokes.runVerdict(record, run.caps, CAPS.length, run.score,
+                    runs.isEmpty() ? run.score : runs.get(0).score), true);
         }
 
-        // 3) notes finales
-        final boolean announceIntro = dead != null;
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            Bukkit.getServer().showTitle(Title.title(
-                    Component.text("NOTES FINALES", NamedTextColor.GOLD),
-                    Component.text(gradeSummary(), NamedTextColor.WHITE),
-                    Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(4), Duration.ofMillis(500))));
-            teacherSay(gradeOneLine(), true);
-            if (announceIntro) {
-                teacherSay("Le fayot et le cancre seront désignés au début de la prochaine run. Dormez bien.", true);
-            }
-        }, 260L);
-
-        // 4) nouvelle run
+        // Nouvelle run
         Bukkit.getScheduler().runTaskLater(this, () ->
                 Bukkit.getServer().showTitle(Title.title(
                         Component.text("NOUVELLE RUN", NamedTextColor.GREEN),
                         Component.text("Reconnecte-toi dans une trentaine de secondes", NamedTextColor.GRAY),
-                        Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(2), Duration.ofMillis(300)))),
-                400L);
+                        Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(3), Duration.ofMillis(300)))),
+                FINALE_TICKS - 100L);
 
         Bukkit.getScheduler().runTaskLater(this, this::finishReset, FINALE_TICKS);
     }
@@ -1783,15 +2137,20 @@ public class UhcPlugin extends JavaPlugin implements Listener {
         return sb.toString();
     }
 
-    // Bruit de huee : plusieurs "hmmm" graves qui se chevauchent
+    // Bruit de huee : la foule du pack (boo.ogg) + plusieurs "hmmm" graves qui se chevauchent
     private void playBoo() {
+        for (Player o : Bukkit.getOnlinePlayers()) {
+            if (heads.hasPack(o)) {
+                heads.play(o, "boo", Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            }
+        }
         for (int i = 0; i < 10; i++) {
             final int n = i;
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 for (Player o : Bukkit.getOnlinePlayers()) {
                     float pitch = 0.5f + ThreadLocalRandom.current().nextFloat() * 0.35f;
                     Sound sound = (n % 3 == 0) ? Sound.ENTITY_ZOMBIE_AMBIENT : Sound.ENTITY_VILLAGER_NO;
-                    o.playSound(o.getLocation(), sound, 0.9f, pitch);
+                    o.playSound(o.getLocation(), sound, heads.hasPack(o) ? 0.35f : 0.9f, pitch);
                 }
             }, i * 3L);
         }
@@ -2033,7 +2392,9 @@ public class UhcPlugin extends JavaPlugin implements Listener {
                 case "cancre" -> roulette(pool, me, false, 0, 14, null);
                 case "deux" -> roulette(pool, me, true, 0, 14, () -> roulette(pool, me, false, 0, 14, null));
                 case "prof" -> {
-                    teacherSay("Test de la bulle du professeur : elle s'affiche en haut, au centre de l'écran.", true);
+                    teacherSay("Test de la bulle du professeur : elle s'affiche dans le coin gauche de l'écran, avec sa voix.", true);
+                    teacherSay(Jokes.outOfOrder(tester.getName(), 3, 1, CAPS[1][2], 2), true);
+                    teacherSay(Jokes.eatGolden(tester.getName()), true);
                     Jokes.Ctx t = new Jokes.Ctx();
                     t.stage = stage();
                     t.minutes = survivedSeconds / 60;

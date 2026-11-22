@@ -7,6 +7,7 @@ max-score: 20
 
 # ----- BONS POINTS -----
 bonus:
+  clutch: 0.5                    # seau d'eau pose en pleine chute (le professeur applaudit)
   advancement: 0.2               # chaque progres Minecraft
   advancement-first: 0.5         # a la place, si on est le PREMIER de l'equipe a le faire
   regen: 1.0                     # reussir a regenerer des coeurs (pomme d'or, potion...)
@@ -46,7 +47,28 @@ caps:
 # Exemples avec les valeurs par defaut (erreur bete) : 0,5 coeur = -0,4 ; 1 = -1 ; 3 = -4,7 ; 5 = -9,5
 # Une valeur d'exposant plus grande rend la sanction plus brutale quand l'incident s'aggrave.
 penalties:
-  incident-window-seconds: 2.5   # les points sont calcules et annonces APRES X secondes sans nouveau degat de cette cause
+  incident-window-seconds: 1.0   # les points sont calcules et annonces APRES X secondes sans nouveau degat de cette cause
+  # Delai propre a certaines causes (un coup unique se solde presque tout de suite ; le feu, le poison... reviennent par a-coups)
+  window-by-cause:
+    FALL: 0.4
+    FLY_INTO_WALL: 0.4
+    LIGHTNING: 0.4
+    FALLING_BLOCK: 0.4
+    ENTITY_EXPLOSION: 0.4
+    BLOCK_EXPLOSION: 0.4
+    LAVA: 0.8
+    CONTACT: 0.8
+    HOT_FLOOR: 0.8
+    FIRE: 1.3
+    DROWNING: 1.3
+    POISON: 1.7
+    WITHER: 1.7
+    FREEZE: 2.3
+    STARVATION: 4.5
+  # Petites chutes : sanction un peu plus dure en dessous de "small-fall-hearts" coeurs perdus
+  # (les chutes plus hautes ne changent pas). Bonus maximal pour une chute d'un demi-coeur.
+  small-fall-hearts: 2.0
+  small-fall-bonus: 0.55
   rate:
     stupid: 1.0       # erreur bete
     normal: 0.6       # erreur normale
@@ -73,7 +95,7 @@ fayot:
 
 # ----- CANCRE (moins bonne note de la run precedente) -----
 # Pendant duration-seconds, un effet derangeant au hasard toutes les interval-seconds.
-# Chaque effet dure 10 secondes. Format : "effet:secondes:niveau" (niveau 0 = I, 1 = II)
+# Chaque effet dure le nombre de secondes indique. Format : "effet:secondes:niveau" (niveau 0 = I, 1 = II)
 cancre:
   duration-seconds: 600       # le malus dure 10 minutes
   interval-seconds: 30        # un effet au hasard toutes les 30 secondes (chacun dure presque jusqu'au suivant)
@@ -116,16 +138,31 @@ pack:
   bar-colors: true     # nouvelles couleurs pour la barre du haut (jaune) et le radar (bleu)
 
 # ----- LE PROFESSEUR (personnage qui commente la run) -----
-# Ses repliques s'affichent dans une bulle (barre violette en haut de l'ecran) au lieu du chat :
-# degats et fautes, objectifs reussis, fin de run, fayot et cancre, et des remarques d'ambiance.
+# Ses repliques s'affichent dans une bulle avec portrait, dans le COIN GAUCHE de l'ecran (avec le pack ; sans le pack :
+# simple barre violette en haut). Il "parle" : le texte s'ecrit lettre par lettre avec de petits bruits de voix.
+# Il reagit aux degats, aux objectifs (meme dans le desordre), aux bons reflexes, aux changements de classement...
 # Tous les textes sont dans Jokes.java.
 teacher:
   enabled: true
-  name: "ScameBeast"          # nom affiche devant ses repliques
-  max-chars: 66                # une bulle est coupee apres ~60 caracteres (sinon le texte depasse de l'ecran)
+  name: "ProfB"                # nom affiche devant ses repliques
+  max-lines: 3                 # lignes de texte maximum par bulle (reduit a 2 si tu joues avec une GRANDE interface)
+  chars-per-second: 26         # vitesse d'ecriture
+  hold-ticks-per-char: 1.5     # temps de lecture laisse apres l'ecriture (ticks par lettre ; 20 ticks = 1 s)
+  voice-volume: 0.5            # volume de sa voix (0 = muet)
+  margin: 4                    # distance (pixels) entre la bulle et le bord gauche de l'ecran
   ambient: true                # remarques d'ambiance a des moments ALEATOIRES
   ambient-min-seconds: 150     # delai le plus court entre deux remarques
   ambient-max-seconds: 480     # delai le plus long
+
+# ----- INTERFACE (barre d'objectifs, bulle) : reglages d'affichage -----
+# Minecraft dessine a l'echelle de l'interface : largeur GUI = largeur de l'ecran / echelle de l'interface.
+# Ex : ecran 1920x1080 avec interface "3" -> 640 x 360 ; avec interface "4" -> 480 x 270 (Options > Parametres video).
+# La bulle est calee a gauche d'apres ces valeurs : si elle n'est pas bien dans le coin, ajuste gui-width.
+ui:
+  gui-width: 640
+  gui-height: 360
+  objectives-shift-x: 30       # decalage de la barre d'objectifs, en pixels (+ = vers la droite, - = vers la gauche)
+  objectives-shift-y: 0        # decalage vertical (+ = vers le bas ; 3 ou 4 suffisent)
 
 # ----- MEILLEURE RUN (score calcule avec les objectifs ET le temps) -----
 # Chaque objectif fait par l'equipe rapporte ses points (section "caps") x 10 x un coefficient de rapidite :

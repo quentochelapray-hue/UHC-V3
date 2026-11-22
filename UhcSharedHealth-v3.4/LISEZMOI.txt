@@ -1,3 +1,31 @@
+CHANGEMENTS v3.5
+PROFESSEUR (ProfB)
+- Il a maintenant une VOIX : le texte s'ecrit lettre par lettre avec de petits bruits ("bla"), des pauses aux
+  points et aux virgules, la bouche du portrait bouge pendant qu'il parle. Volume : teacher.voice-volume (0 = muet).
+- Bulle plus petite (police a largeur fixe plus petite, panneau plus etroit, portrait reduit) et calee dans le COIN
+  GAUCHE de l'ecran, sous la barre d'objectifs. Temps de lecture plus long (teacher.hold-ticks-per-char).
+  Si la bulle n'est pas bien dans le coin : ui.gui-width dans config.yml (largeur de l'ecran / echelle de l'interface).
+- Les phrases ne sont JAMAIS coupees au milieu : une bulle contient des phrases entieres (jusqu'a 3 lignes) ; une phrase
+  trop longue est coupee a une virgule.
+- Il reagit a beaucoup plus de choses : objectif fait dans le desordre (diamants avant le fer, Nether trop tot...),
+  taquineries de celui qui est en retard, changement de leader au classement, paliers de duree (10, 20, 30, 45 min...),
+  felicitations (pomme d'or, pomme, repas au bon moment, lait contre le poison, SEAU D'EAU EN PLEINE CHUTE (+0,5 pt),
+  totem), premier monstre tue, boss tues, lit.
+- Fin de run : a l'ecran il ne reste que "FIN DE RUN", le pseudo, la duree et le score. Le professeur dit la mort, le
+  verdict, le palmares (pire moment, meilleur chasseur) et les notes. L'ecran de fin dure 45 s.
+DEGATS
+- Resultats beaucoup plus rapides : delai propre a chaque cause (chute 0,4 s, feu 1,3 s, poison 1,7 s...) et les
+  coeurs perdus s'affichent immediatement au-dessus de la vie ; les points s'ajoutent sur la meme ligne a la fin.
+- Petites chutes (4 a 6 blocs) sanctionnees plus durement : 4 blocs -0,8 (avant -0,2), 5 blocs -1,0 (avant -0,6),
+  6 blocs -1,2 (avant -1,0). A partir de 7 blocs : inchange. Reglages : penalties.small-fall-*.
+- A la mort, les points des degats en cours (et du dernier coup) comptent maintenant dans les notes.
+COFFRES
+- Un coffre POSE par un joueur ne compte plus pour "premier coffre ouvert".
+AUTRES
+- Barre d'objectifs decalable : ui.objectives-shift-x / ui.objectives-shift-y (config.yml).
+- Le radar reste sous la barre d'objectifs.
+- IMPORTANT : supprime plugins/UhcSharedHealth/config.yml avant de lancer (il y a de nouveaux reglages).
+
 CHANGEMENTS v3.4 (fusion de la v3.3 et de la v3.2.1)
 - Meilleure run = SCORE (objectifs x rapidite, temps "par" reglables : best-run.par-minutes). Toutes les runs
   sont gardees et classees par score : /uhcruns (top 10 + meilleurs temps par objectif), "run X pts" dans le Tab,

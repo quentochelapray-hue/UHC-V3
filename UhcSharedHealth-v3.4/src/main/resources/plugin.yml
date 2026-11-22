@@ -1,5 +1,5 @@
 name: UhcSharedHealth
-version: 3.4
+version: 3.5
 main: fr.uhc.UhcPlugin
 api-version: '1.21'
 description: Ultra hardcore en equipe - vie partagee, notes persistantes, objectifs, fayot et cancre, nouvelle map a chaque mort

@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 final class HeadPack {
 
     private static final Key FONT = Key.key("uhc", "heads");
-    private static final String[] SOUNDS = {"cap", "run_end", "hurt", "chest"};
+    private static final String[] SOUNDS = {"cap", "run_end", "hurt", "chest", "talk1", "talk2", "talk3", "talk4", "boo"};
     private static final String[] BAR_FILES = {"blue_background", "blue_progress", "yellow_background", "yellow_progress",
             "white_background", "white_progress"};
 
@@ -172,6 +172,10 @@ final class HeadPack {
                 if (g.file().contains(":")) continue; // texture du jeu : rien a copier
                 byte[] data = resource("pack/ui/" + g.file() + ".png");
                 if (data != null) extra.put("assets/uhc/textures/font/ui/" + g.file() + ".png", data);
+            }
+            for (String t : Ui.extraTextures()) {
+                byte[] data = resource("pack/ui/" + t + ".png");
+                if (data != null) extra.put("assets/uhc/textures/font/ui/" + t + ".png", data);
             }
             extra.put("assets/uhc/font/ui.json", Ui.fontJson().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }

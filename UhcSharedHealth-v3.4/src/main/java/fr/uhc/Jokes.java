@@ -951,4 +951,186 @@ final class Jokes {
                 return null;
         }
     }
+
+    // =====================================================================
+    // v3.5 : reactions du professeur (objectifs dans le desordre, taquineries, felicitations...)
+    // =====================================================================
+
+    /**
+     * Objectif fait alors qu'un objectif PLUS FACILE manque encore (ex : diamants avant le fer).
+     * Renvoie null s'il n'y a rien de special a dire.
+     */
+    static String outOfOrder(String name, int capIndex, int missingIndex, String missingLabel, int missingCount) {
+        String line;
+        if (capIndex == 3 && (missingIndex == 1 || missingIndex == 2)) {
+            // les diamants ne se minent qu'avec une pioche en fer : sans fer, c'est du butin de coffre, un echange ou de la chance
+            line = fresh("ooo_diamond",
+                    "{n} trouve des diamants sans avoir touché au fer. Un coffre, un échange ou un miracle ? Je surveille.",
+                    "Des diamants avant le fer ? {n} saute les chapitres. L'examen final sera vite expédié.",
+                    "Diamants pour {n}, pioche en fer pour personne. Soit du butin, soit de la triche. Je regarde.",
+                    "{n} sort un diamant du chapeau avant le moindre lingot de fer. Magicien ou pilleur de coffres ?",
+                    "Diamant pour {n}, fer pour personne : l'ordre des objectifs n'est pas obligatoire, le talent, si.");
+        } else if (capIndex == 4) {
+            line = fresh("ooo_nether",
+                    "{n} ouvre le Nether alors qu'il manque « {m} ». Courageux, ou suicidaire : la nuance se joue en cœurs.",
+                    "Direction l'enfer sans « {m} » : {n} a le sens de l'aventure, pas celui de la préparation.",
+                    "Le Nether avant « {m} » ? {n} aime commencer par la fin. Emportez des seaux d'eau, c'est tout ce que je dis.");
+        } else if (capIndex >= 5) {
+            line = fresh("ooo_late",
+                    "{n} valide cet objectif alors que « {m} » n'est toujours pas fait. L'ordre du jour est une simple suggestion, visiblement.",
+                    "« {m} » attend toujours, et {n} avance quand même. Les objectifs dans le désordre : style maison.",
+                    "{n} saute « {m} » comme on saute une page du cours. Ça passe, mais ça se paie à l'examen.");
+        } else {
+            line = fresh("ooo_generic",
+                    "{n} réussit cet objectif avant « {m} ». L'ordre n'était pas obligatoire, je note quand même.",
+                    "{n} double la file : « {m} » reste à faire, mais l'ambition est là. C'est déjà ça.",
+                    "Objectif validé par {n}, alors que « {m} » traîne encore. Les élèves pressés finissent souvent dans la lave.");
+        }
+        if (missingCount >= 3 && ThreadLocalRandom.current().nextInt(100) < 50) {
+            line += " Il en manque même " + missingCount + " avant celui-là.";
+        }
+        return line.replace("{n}", name).replace("{m}", missingLabel);
+    }
+
+    /** Taquinerie : celui qui avance contre celui qui traine. */
+    static String tease(String doer, String slacker) {
+        return fresh("tease",
+                "Pendant que {a} rafle les objectifs, {b} contemple le paysage. C'est aussi une stratégie.",
+                "{a} avance, {b} suit de loin. Très loin. Je ne vois même plus {b} sur l'écran.",
+                "{b}, {a} vient de te mettre une longueur d'avance. Disons plutôt une rivière.",
+                "{a} fait du bon travail. {b}, lui, fait de la figuration. Tout le monde a son rôle.",
+                "À ce rythme, {b} aura fini la run au moment où {a} aura déjà rédigé ses mémoires.",
+                "{b}, tu peux demander des conseils à {a}. Ou, au minimum, le suivre de moins loin.")
+                .replace("{a}", doer).replace("{b}", slacker);
+    }
+
+    static String leaderChange(String newLeader, String oldLeader) {
+        return fresh("leader",
+                "{a} passe devant {b} au classement. Enfin un peu de rivalité dans cette classe.",
+                "Changement en tête : {a} double {b}. L'un savoure, l'autre prend des notes. De rage.",
+                "{a} dépasse {b} aux points. La couronne change de tête, la pression aussi.",
+                "Tiens, {a} est devant {b}. Rassurez-vous {b}, la run n'est pas finie. Pour votre bonheur ou votre malheur.")
+                .replace("{a}", newLeader).replace("{b}", oldLeader);
+    }
+
+    static String eatGolden(String name) {
+        return fresh("eat_golden",
+                "Une pomme d'or ! {n} réfléchit enfin comme quelqu'un qui veut survivre. Je suis ému.",
+                "{n} croque une pomme d'or : voilà un réflexe de survie. Je note, avec un sourire discret.",
+                "Bravo {n} : la pomme d'or, c'est le seul fruit qui répare vraiment les erreurs.",
+                "{n} se soigne avec de l'or. Pour une fois, on dépense l'argent intelligemment.")
+                .replace("{n}", name);
+    }
+
+    static String eatApple(String name) {
+        return fresh("eat_apple",
+                "{n} mange une pomme. Une par jour éloigne le médecin. Pour le prof, ça ne marche pas : je suis toujours là.",
+                "Une pomme pour {n} : le sens des priorités est en train de se réveiller. Doucement.",
+                "{n} a pensé à manger. C'est un début de carrière brillant.",
+                "Bravo {n}, tu as pensé à te nourrir. La faim, ça tue plus de joueurs que les creepers.")
+                .replace("{n}", name);
+    }
+
+    static String eatSmart(String name) {
+        return fresh("eat_smart",
+                "{n} mange avant que la barre de faim crie. La survie, c'est aussi ça. Bien joué.",
+                "Un repas pour {n} : l'estomac et le prof applaudissent en chœur.",
+                "{n} se nourrit au bon moment. Mention « sens des responsabilités ».",
+                "Bien vu {n} : manger avant le drame, c'est le truc que personne ne fait. Bravo.")
+                .replace("{n}", name);
+    }
+
+    static String milk(String name) {
+        return fresh("milk",
+                "Du lait pour effacer les effets ! {n} a lu le cours. Je n'en reviens pas.",
+                "{n} boit du lait : le bon réflexe contre le poison. Il y a peut-être de l'espoir pour cette classe.",
+                "Un seau de lait pour {n}. Les vaches sont fières, le prof aussi. Un peu.")
+                .replace("{n}", name);
+    }
+
+    static String clutch(String name) {
+        return fresh("clutch",
+                "Seau d'eau en pleine chute ! {n} vient de réussir le geste que personne n'ose tenter. Je m'incline.",
+                "{n} sauve la situation avec un seau d'eau en vol. Là, c'est de l'art. De l'art de survivre.",
+                "Atterrissage dans l'eau, en plein vol, signé {n}. J'ai failli lever la main pour applaudir.",
+                "{n} a le réflexe du seau d'eau : un talent rare, qui se mérite, qui se paie en cœurs sinon.")
+                .replace("{n}", name);
+    }
+
+    static String totem(String name) {
+        return fresh("totem",
+                "Le totem sauve {n} in extremis ! La mort a perdu aujourd'hui, le prof aussi, il voulait du spectacle.",
+                "{n} était mort. Le totem a dit non. Remerciez-le, il travaille bien mieux que vous.",
+                "Totem activé pour {n} : une seconde chance. Les prochaines seront moins gratuites.")
+                .replace("{n}", name);
+    }
+
+    static String milestone(int minutes) {
+        String m = String.valueOf(minutes);
+        if (minutes >= 90) {
+            return fresh("mile_long",
+                    "Déjà " + m + " minutes de survie ! Je commence à croire à votre existence. Ne gâchez pas ça.",
+                    m + " minutes. Même mes plus anciens élèves n'avaient pas tenu aussi longtemps. Presque félicitations.");
+        }
+        if (minutes >= 45) {
+            return fresh("mile_mid",
+                    m + " minutes de survie : l'équipe tient. Pour un résultat honorable, il reste surtout à ne pas faire d'erreur.",
+                    "Déjà " + m + " minutes. Je suis presque fier. Presque, restez concentrés.");
+        }
+        return fresh("mile_short",
+                m + " minutes sans catastrophe : un exploit, à cette échelle. Applaudissements polis.",
+                "Déjà " + m + " minutes. Les cours avancent. Les élèves, un peu moins.",
+                m + " minutes de run : le suspense monte, les erreurs aussi.");
+    }
+
+    static String firstKill(String name, String mob) {
+        return fresh("first_kill",
+                "Premier monstre tué par {n} : un {m} de moins. Un peu de courage, ça fait du bien.",
+                "{n} ouvre le tableau de chasse avec un {m}. Le sang de la classe est baptisé.",
+                "Un {m} s'effondre, {n} savoure. Il lui a fallu du temps, mais il l'a fait.")
+                .replace("{n}", name).replace("{m}", mob);
+    }
+
+    static String bossKill(String name, String mob) {
+        return fresh("boss_kill",
+                "{n} a abattu un {m} ! Là, je n'ai rien à redire. J'ai bien cherché pourtant.",
+                "Un {m} de moins grâce à {n}. Le prof applaudit, doucement, pour ne pas gâcher son effet.",
+                "{n} vient de terrasser un {m}. Mention « excellent », écrite en tout petit.")
+                .replace("{n}", name).replace("{m}", mob);
+    }
+
+    static String bed(String name) {
+        return fresh("bed",
+                "{n} dort dans un lit : récompense collective. Reposez-vous, la classe reprend bientôt.",
+                "Un lit pour {n}, des points pour toute la classe. Voilà le genre de décision que j'apprécie.",
+                "{n} a trouvé le sommeil. Les phantoms, eux, cherchent une autre victime.")
+                .replace("{n}", name);
+    }
+
+    static String collective(String name, String label) {
+        return fresh("collective",
+                "{n} réussit « {l} » : toute la classe empoche les points. Un travail d'équipe, ça existe donc.",
+                "Défi collectif réussi par {n} (« {l} ») : tout le monde gagne. Je n'y crois pas non plus.")
+                .replace("{n}", name).replace("{l}", label);
+    }
+
+    /** Palmares de fin de run (lu par le professeur). Chaque element peut etre null. */
+    static String palmares(String worstName, double worstHearts, String worstCause, String hunter, int kills) {
+        StringBuilder sb = new StringBuilder();
+        if (worstName != null && worstHearts >= 2.0) {
+            sb.append(fresh("palm_worst",
+                    "Moment le plus honteux : {n}, {h} cœurs perdus d'un coup ({c}).",
+                    "Mention spéciale à {n} : {h} cœurs envolés en une seule erreur ({c}).",
+                    "Le prix de la maladresse revient à {n} : {h} cœurs d'un coup ({c}).")
+                    .replace("{n}", worstName).replace("{h}", num(worstHearts)).replace("{c}", worstCause));
+        }
+        if (hunter != null && kills >= 3) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(fresh("palm_hunter",
+                    "Chasseur de la run : {n}, {k} monstres abattus.",
+                    "Au tableau de chasse, {n} domine avec {k} monstres.")
+                    .replace("{n}", hunter).replace("{k}", String.valueOf(kills)));
+        }
+        return sb.toString();
+    }
 }
