@@ -1,3 +1,105 @@
+CHANGEMENTS v4.1 : VOIX HORS JEU (fichiers sons dans le pack)
+- 8 nouvelles voix creees pour le serveur (ce ne sont PAS des sons de Minecraft) : humain (babillage), aigu (enfant), grave (ogre),
+  gnome (tres aigu), androide, alien, fantome, retro (8 bits). Chacune a 4 variantes pour que ca ne sonne pas repetitif.
+  Elles vont dans le pack de ressources : les joueurs le recoivent/retelechargent tout seuls a la connexion (relance le serveur).
+  Un joueur qui refuse le pack entend a la place un son du jeu proche. Choix : /uhcprof voix <nom> ou menu > Commandes > "Ma voix".
+- TES PROPRES VOIX : cree la voix "perso" avec tes fichiers. Mets 1 a 4 fichiers v_perso1.ogg, v_perso2.ogg, v_perso3.ogg,
+  v_perso4.ogg dans plugins/UhcSharedHealth/sounds/ (s'il n'y a que v_perso1.ogg, il est repete), puis /uhcpack ou redemarre.
+  Format : .ogg (Vorbis), MONO, tres court (0,05 a 0,3 s : une syllabe, "bla", "hmm"...). La voix "perso" apparait ensuite dans la liste.
+  Convertir un enregistrement : ffmpeg -i mon_son.wav -ac 1 -t 0.25 -c:a libvorbis v_perso1.ogg
+- Tu peux aussi REMPLACER une voix du pack : depose un fichier du meme nom (ex : v_humain1.ogg) dans plugins/UhcSharedHealth/sounds/.
+
+CHANGEMENTS v4.0 : VOIX DU PROFESSEUR AU CHOIX
+- 19 voix : villager (par defaut), blip, talk (synthese du pack), cochon, chat, poule, loup, perroquet, zombie, piglin,
+  enderman, chauve-souris, golem, cloche, flute, xylophone, robot, basse, muet. Aucun fichier a ajouter : ce sont des sons du jeu.
+- CHACUN choisit SA voix (les autres gardent la leur) : /uhcprof voix <nom>, ou menu (Shift+F) > Commandes > "Ma voix"
+  (clic gauche = suivante, clic droit = precedente, avec essai). /uhcprof voix defaut = revenir a la voix du serveur.
+  /uhcprof voix (sans nom) = liste. /uhcprof voix off|on = couper/remettre la voix pour toi.
+- Voix PAR DEFAUT du serveur (pour ceux qui n'ont pas choisi) : op, /uhcprof voix global <nom> ou menu > Reglages.
+  Attention : "/uhcprof voix villager|blip|talk" change maintenant TA voix (plus celle de tout le monde).
+- Volume pour tous : teacher.voice-volume (config.yml ou menu > Reglages).
+
+CHANGEMENTS v3.9 (FUSION de la v3.8 et de l'autre v3.6)
+- Contient TOUT : menu (Shift+F), succes, surnoms, memoire du professeur, /uhcstock, /uhcmark, /uhcend, alertes, reglages en jeu
+  (v3.8) + MVP, badges de run, MLG a points selon la hauteur, bulle plus petite, objectifs centres, recap a la connexion (autre v3.6).
+- VOIX DU PROFESSEUR : nouvelle voix par defaut = villageois (au lieu du "bla" a notes). Changer la voix de tout le monde (op) :
+  /uhcprof voix villager|blip|talk, ou menu > Reglages > bouton "Voix du professeur" (clic = voix suivante + essai).
+  Couper la voix pour toi seul : /uhcprof voix off (on = la remettre) ou menu > Commandes.
+- /uhcprof <texte> (le professeur le dit) et /uhcprof stop : reserves aux op.
+- /uhcprof badges = tes SUCCES (Intouchable, Chasseur...). Les BADGES de run (Mineur, Soigneur...) restent dans /uhcstats.
+
+CHANGEMENTS v3.8
+CONFIG QUI SE MET A JOUR TOUTE SEULE : les nouveaux reglages s'ajoutent a plugins/UhcSharedHealth/config.yml au demarrage,
+  tes valeurs sont gardees. Tu n'as plus besoin de supprimer config.yml a chaque version. (Limite : si une nouvelle version
+  CHANGE la valeur par defaut d'un reglage deja present dans ton fichier, ton ancienne valeur reste.)
+REGLAGES EN JEU (op) : menu (Shift+F) > onglet "Reglages" : voix du professeur (volume, vitesse, remarques d'ambiance),
+  points annonces a tous, severite des erreurs, malus de coup a un coequipier, alertes d'equipe... Clic gauche +, clic droit -,
+  Shift x5. Applique tout de suite et sauvegarde dans config.yml. Bouton pour remettre ces reglages par defaut.
+L'END : /uhcend (ou bouton du menu) = liste de preparation (yeux d'Ender, lits, blocs, nourriture, pommes d'or, seau d'eau,
+  arc, fleches). Tant que le stronghold n'est pas trouve, le professeur rappelle combien d'yeux d'Ender il vous faut (12),
+  combien vous en avez et combien vous pouvez en fabriquer (perles + poudre de blaze). Dans l'End : compteur de cristaux
+  restants (x/10) au fil du combat.
+ALERTE DE DISPERSION : un joueur a plus de 150 blocs des autres (ou seul dans une autre dimension) trop longtemps = message +
+  professeur (vie partagee : restez groupes). Reglable dans config.yml > team.
+
+CHANGEMENTS v3.7
+MENU INTERACTIF : accroupi (Shift) + F, ou /uhcmenu (ou /uhc). Un coffre a onglets :
+- Commandes (tous les joueurs) : stats, notes, classement, stock, position, bulles/voix du professeur (ON/OFF), surnom.
+- Succes : tes succes (debloques ou non).
+- Reperes : liste avec distance + fleche, boutons "Poser base / portail / forteresse / village / mine ici",
+  clic = direction dans la barre d'action, Shift+clic = supprimer.
+- Equipe : stock en direct + vie d'equipe.
+- Admin (visible seulement pour les op) : nouvelle map, recreer le pack, notes a 20, tests du prof. Les actions
+  dangereuses demandent un 2e clic pour confirmer.
+  NB : le serveur ne peut pas lire une touche comme P (il faudrait un mod cote joueur). F seul garde son role normal
+  (echange des mains, totem...) : seul Shift+F ouvre le menu.
+STOCK D'EQUIPE : /uhcstock (fer, diamants, obsidienne, perles, yeux d'Ender, blaze, pommes d'or, nourriture, lits, seaux...).
+ALERTE DE VIE : sous 3 coeurs puis au dernier coeur, message + son + le professeur, avec le nombre de pommes d'or et de
+  nourriture de l'equipe.
+REPERES PARTAGES : /uhcmark <nom>, /uhcmark del <nom>, /uhcmarks (distance + direction), /uhcpos (partage ta position).
+  Les reperes sont effaces a chaque nouvelle map.
+
+CHANGEMENTS v3.6
+COMMANDE /uhcprof (pour chaque joueur, enregistree)
+- /uhcprof off : plus de bulles NI de voix du professeur pour toi (les autres joueurs gardent les leurs).
+- /uhcprof on : remet tout. /uhcprof voix off|on : coupe seulement la voix (les bulles restent).
+- /uhcprof badges [pseudo] (ou /uhcbadges) : liste des succes. /uhcprof surnom : ton titre actuel.
+SUCCES (badges) : Intouchable (fer sans perdre un coeur), Taupe express (diamants < 15 min), Presse (Nether < 25 min),
+  Aventurier (5 objectifs), Tueur de dragon, Increvable (30 min), Marathonien (1 h), Equilibriste (5 runs de 10 min+
+  sans chute d'affilee), Chasseur (50 monstres), Habitue (tentative 10). Annonces dans le chat a tout le monde.
+SURNOMS : apres 3 erreurs du meme type (chute, lave, feu, noyade, creeper, cactus...), le joueur recoit un titre
+  dans le Tab (Le Funambule, Pyromane, Poisson Rouge, Ami des Creepers...). Il change si une autre erreur devient plus frequente.
+MEMOIRE DU PROFESSEUR : "3e fois que X tombe de haut", "X, encore la lave, deja ta mort a la tentative 12",
+  accueil des habitues. Tout est conserve entre les runs.
+REACTIONS : le professeur repond au chat (son nom, "prof", gg, aide, noob, mdr, faim, peur, rip...), a un joueur qui
+  quitte en pleine run, au premier debris antique. Delais entre les remarques pour ne pas abuser.
+FIN DE RUN : replay en quelques phrases (premier/dernier objectif, pire minute, erreur la plus repetee) et GRAPHIQUE dans
+  le chat (coeurs perdus par joueur + courbe des degats au fil du temps).
+- Nouveau fichier plugins/UhcSharedHealth/extras.yml (succes, surnoms, memoire). Supprime-le pour tout remettre a zero.
+- Pas besoin de supprimer config.yml pour cette version (aucun nouveau reglage).
+
+CHANGEMENTS v3.6 (autre branche)
+- Barre d'objectifs : les 10 icones sont maintenant CENTREES sur l'ecran (le chrono, le crane et l'etoile a droite ne
+  les decalent plus) et chaque icone est centree dans son cadre.
+- Bulle du professeur : beaucoup plus petite (panneau de 112 px), DEUX lignes de texte par rangee (fini les gros
+  espaces), ecriture plus rapide, affichage plus court. Les phrases restent entieres.
+- Voix : nouvelle voix par defaut (villageois). Pour en changer en jeu : /uhcprof voix villager | blip | talk | off.
+- /uhcprof <texte> : fait parler le professeur. /uhcprof stop : le fait taire.
+- Fin de run : plus de notes ; le serveur attend que le professeur ait FINI de parler avant de deconnecter.
+  Il raconte : la mort, le verdict, le replay du pire moment, le MVP, les badges, les records battus.
+- MVP : le joueur qui a le plus aide la run (minerais, soins, objectifs ouverts, MLG, monstres, peu de coeurs perdus).
+  Pas forcement le fayot. Egalite : tous les ex aequo.
+- Badges : Mineur, Soigneur, Chasseur, Eclaireur, Cascadeur, Survivant. Affiches dans /uhcstats, /uhcglobal et Tab
+  (compteur depuis le debut). Egalite : tous les ex aequo ont le badge.
+- MLG : verifie (aucun degat de chute dans les 2 secondes) et recompense selon la HAUTEUR : 0,3 + 0,06 par bloc au-dela
+  de 5 (plafond 2). Phrases selon la hauteur. Un joueur qui a reussi un MLG et meurt dans la lave ou le feu... le
+  professeur le lui rappelle.
+- Presque-mort (demi-coeur) : le professeur reagit, puis quand la vie remonte.
+- Recap de la derniere run a la connexion (duree, objectifs, score, qui a tout fait sauter, MVP, record a battre).
+- Objectifs faits dans le desordre : phrases plus naturelles.
+- Stalagmites : ne sont plus comptees comme des cactus (ni dans les phrases, ni dans l'annonce des points).
+- Plus de nouvelles reglages dans config.yml : SUPPRIME l'ancien config.yml avant de lancer.
+
 CHANGEMENTS v3.5
 PROFESSEUR (ProfB)
 - Il a maintenant une VOIX : le texte s'ecrit lettre par lettre avec de petits bruits ("bla"), des pauses aux

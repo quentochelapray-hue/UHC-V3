@@ -1,0 +1,62 @@
+name: UhcSharedHealth
+version: 4.1
+main: fr.uhc.UhcPlugin
+api-version: '1.21'
+description: Ultra hardcore en equipe - vie partagee, notes persistantes, objectifs, fayot et cancre, nouvelle map a chaque mort
+commands:
+  uhcreset:
+    description: Force une nouvelle map (arrete le serveur)
+    usage: /uhcreset
+    permission: uhc.reset
+  uhcstats:
+    description: Stats de la run en cours
+    usage: /uhcstats
+  uhcruns:
+    description: Classement des meilleures runs (objectifs puis temps)
+    usage: /uhcruns
+  uhcglobal:
+    description: Stats globales depuis le debut
+    usage: /uhcglobal
+  uhcnotes:
+    description: Affiche les notes (ou les remet a 20 avec reset)
+    usage: /uhcnotes [reset [pseudo]]
+  uhctest:
+    description: Teste la roulette du fayot et du cancre sur toi
+    usage: /uhctest fayot|cancre|deux|prof|stop
+    permission: uhc.reset
+  uhcprof:
+    description: Fait parler le professeur, ou change sa voix
+    usage: /uhcprof off|on|voix <nom>|voix off|voix on|badges|surnom (op seulement - voix global <nom>, stop, texte)
+    permission: uhc.reset
+  uhcpack:
+    description: Recree le pack de textures des tetes (skins des joueurs connectes) et l'envoie a tout le monde
+    usage: /uhcpack
+    permission: uhc.reset
+  uhcprof:
+    description: Coupe ou remet les bulles et la voix du professeur pour toi, affiche tes succes
+    usage: /uhcprof off|on|voix <nom>|voix off|voix on|badges|surnom (op seulement - voix global <nom>, stop, texte)
+  uhcbadges:
+    description: Affiche tes succes (ou ceux d'un joueur)
+    usage: /uhcbadges [pseudo]
+  uhcmenu:
+    description: Ouvre le menu UHC (aussi avec accroupi + F)
+    usage: /uhcmenu
+    aliases: [uhc]
+  uhcstock:
+    description: Stock de l'equipe (fer, perles, nourriture...)
+    usage: /uhcstock
+  uhcpos:
+    description: Partage ta position avec tout le monde
+    usage: /uhcpos
+  uhcmark:
+    description: Pose un repere partage a ta position (ou del <nom> pour le supprimer)
+    usage: /uhcmark <nom> | /uhcmark del <nom>
+  uhcmarks:
+    description: Liste des reperes avec distance et direction
+    usage: /uhcmarks
+  uhcend:
+    description: Preparation de l'End (yeux d'Ender, lits, blocs, nourriture) et cristaux restants
+    usage: /uhcend
+permissions:
+  uhc.reset:
+    default: op
